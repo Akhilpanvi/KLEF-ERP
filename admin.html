@@ -33,6 +33,16 @@ tr.more>td{background:var(--bg);white-space:normal}tr.more table td,tr.more tabl
 <select id="sort"><option value="pct">Lowest attendance first</option><option value="risk">Most courses out of reach</option><option value="at">Most recently fetched</option><option value="id">ID</option></select></div>
 <div class="scroll"><table id="stu"></table></div>
 <p class="mut" style="font-size:12px;margin:10px 0 0">Click a student to see their courses. "Left" = classes each course is still expected to hold until the last instruction day, estimated from the academic calendar (Sundays, holidays and exam weeks excluded) and how often the course has met on each weekday. "Out of reach" = courses that stay below the target even if every remaining class is attended. Data is as of each student's last fetch.</p></div>
+<div class="card"><h2>Academic calendar editor</h2>
+<p class="mut" style="font-size:12px;margin:-6px 0 14px">Add holidays or events on top of the fixed KL calendar. These apply to everyone — the calendar page, class-day counts and the attendance projection all respect them.</p>
+<form id="cef" class="controls" style="align-items:flex-end">
+<label class="mut" style="display:flex;flex-direction:column;gap:3px;font-size:12px">From<input id="ce_start" type="date" required></label>
+<label class="mut" style="display:flex;flex-direction:column;gap:3px;font-size:12px">To <span style="opacity:.6">(optional)</span><input id="ce_end" type="date"></label>
+<label class="mut" style="display:flex;flex-direction:column;gap:3px;font-size:12px">Type<select id="ce_kind"></select></label>
+<label class="mut" style="display:flex;flex-direction:column;gap:3px;font-size:12px;flex:1;min-width:160px">Label<input id="ce_label" placeholder="e.g. Diwali holiday" required></label>
+<button class="on" style="padding:9px 16px">Add</button>
+<span id="ce_msg" style="font-size:12px"></span></form>
+<div class="scroll"><table id="ce_tab"></table></div></div>
 <div class="card"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Feedback <span class="mut" id="fbn"></span></h2>
 <select id="fbk"><option value="">All types</option><option value="bug">Bugs</option><option value="idea">Ideas</option><option value="calendar">Calendar is wrong</option><option value="other">Other</option></select></div>
 <div class="scroll"><table id="fbt"></table></div></div>
@@ -87,7 +97,24 @@ async function load(){const pw=sessionStorage.getItem('kladm')||'';
  U=j.users;FB=j.feedback||[];STORE=j.store;$('login').style.display='none';$('app').style.display='';
  $('sub').textContent=`${U.length} stored summar${U.length===1?'y':'ies'} · storage: ${{mongodb:'MongoDB',file:'local file (.data/users.json)',none:'none'}[STORE]}`;
  $('warn').innerHTML=STORE==='none'?'<div class="warn">No storage is configured on this deployment, so nothing is being saved. In Vercel, add MONGODB_URI under Settings → Environment Variables and redeploy.</div>':'';
- view();fbView()}
+ view();fbView();ceLoad()}
+
+// ---- academic calendar editor ----
+Object.entries(KINDS).forEach(([k,v])=>$('ce_kind').insertAdjacentHTML('beforeend',`<option value="${k}">${v.label}</option>`));
+let CE=[];
+function ceView(){$('ce_tab').innerHTML='<tr><th>Dates</th><th>Type</th><th>Label</th><th></th></tr>'+(CE.length?CE.slice().sort((a,b)=>a.start<b.start?-1:1).map(e=>`<tr><td>${fmt(e.start)}${e.end&&e.end!==e.start?' – '+fmt(e.end):''}</td><td><span class="kpill" style="--k:${KINDS[e.kind]?.color||'#888'}">${esc(KINDS[e.kind]?.label||e.kind)}</span></td><td style="white-space:normal">${esc(e.label)}</td><td class="n"><button data-del="${esc(e.id)}" style="padding:4px 10px;font-size:12px">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="mut">No admin events yet.</td></tr>');
+ $('ce_tab').querySelectorAll('button[data-del]').forEach(b=>b.onclick=()=>ceDel(b.dataset.del));}
+async function ceLoad(){try{const r=await fetch(API+'/api/calendar',{cache:'no-store'});const j=await r.json();CE=j.events||[];ceView();}catch(e){}}
+async function ceDel(id){if(!confirm('Delete this calendar event?'))return;const pw=sessionStorage.getItem('kladm')||'';
+ const r=await fetch(API+'/api/calendar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pw},body:JSON.stringify({action:'delete',id})});
+ if(r.ok){CE=CE.filter(e=>e.id!==id);ceView();}else{const j=await r.json().catch(()=>({}));alert(j.error||'Delete failed')}}
+$('cef').onsubmit=async e=>{e.preventDefault();const pw=sessionStorage.getItem('kladm')||'',m=$('ce_msg');
+ const body={start:$('ce_start').value,end:$('ce_end').value||$('ce_start').value,kind:$('ce_kind').value,label:$('ce_label').value.trim()};
+ m.style.color='var(--mut)';m.textContent='Saving…';
+ const r=await fetch(API+'/api/calendar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pw},body:JSON.stringify(body)});
+ const j=await r.json().catch(()=>({error:'Bad response'}));
+ if(r.ok){CE=CE.filter(e=>e.id!==j.event.id).concat(j.event);ceView();$('ce_label').value='';$('ce_end').value='';m.style.color='var(--p)';m.textContent='Added ✓';setTimeout(()=>m.textContent='',1800);}
+ else{m.style.color='var(--a)';m.textContent=j.error||'Failed'}};
 
 $('lf').onsubmit=e=>{e.preventDefault();sessionStorage.setItem('kladm',$('pw').value);$('pw').value='';load()};
 $('out').onclick=()=>{sessionStorage.removeItem('kladm');U=[];$('app').style.display='none';$('login').style.display=''};

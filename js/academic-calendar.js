@@ -66,7 +66,19 @@ export const TERMS = [
     ["2027-07-13", 0, "key", "2027-28 academic year commencement"],
   ]),
 ];
-const ALL = TERMS.flatMap((t) => t.events);
+const BAKED = TERMS.flatMap((t) => t.events);
+// Admin-added overlay (holidays / events) loaded at runtime from the backend via setExtraEvents().
+let EXTRA = [];
+/** Replace the admin overlay. Each item: { start, end?, kind, label, id? }. */
+export function setExtraEvents(list) {
+  EXTRA = (Array.isArray(list) ? list : []).map((e) => ({
+    start: e.start, end: e.end || e.start, kind: e.kind, label: e.label, id: e.id, admin: true,
+  })).filter((e) => e.start && e.end && KINDS[e.kind] && e.label);
+}
+export const extraEvents = () => EXTRA;
+const ALL = () => [...BAKED, ...EXTRA];
+/** A term's events (baked + any admin events overlapping its span), for display. */
+export const termEvents = (t) => [...t.events, ...EXTRA.filter((e) => e.start <= t.end && e.end >= t.start)];
 
 // ---- dates are "YYYY-MM-DD" strings (compare as strings, do maths in UTC) ----
 const D = (k) => new Date(k + "T00:00:00Z");
@@ -85,7 +97,7 @@ export function termFor(year = "", sem = "") {
 /** The term whose span contains `k`, else the next one, else the last. */
 export const termOn = (k) => TERMS.find((t) => k <= t.end) || TERMS.at(-1);
 
-export const eventsOn = (k) => ALL.filter((e) => e.start <= k && k <= e.end);
+export const eventsOn = (k) => ALL().filter((e) => e.start <= k && k <= e.end);
 /** Most important kind on a day (for colouring), or "" if nothing is scheduled. */
 export const kindOn = (k) => eventsOn(k).map((e) => e.kind).sort((a, b) => PRIORITY.indexOf(a) - PRIORITY.indexOf(b))[0] || "";
 /** A regular class day: inside the classwork window, not Sunday, not a holiday/exam/immersion day. */
@@ -103,7 +115,7 @@ export function termStats(t, today = todayKey(), from = t.start, to = t.end) {
     if (isExam(k)) s.examDays++;
   }
   s.progress = s.classDays ? s.done / s.classDays : 0;
-  s.upcoming = t.events.filter((e) => e.end >= today).sort((a, b) => (a.start < b.start ? -1 : 1))
+  s.upcoming = termEvents(t).filter((e) => e.end >= today).sort((a, b) => (a.start < b.start ? -1 : 1))
     .map((e) => ({ ...e, inDays: daysBetween(today, e.start) }));
   return s;
 }

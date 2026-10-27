@@ -26,7 +26,8 @@ tr.past td{color:var(--mut)}
 <p class="mut" style="font-size:12px;margin:10px 0 0">Class days = Monday–Saturday between commencement of classwork and the last instruction day, minus holidays, exam weeks and immersion weeks. Public holidays the PDF doesn't mark are not included.</p></div>
 </div>
 <script type="module">
-import {SOURCE,TERMS,KINDS,termFor,termOn,termById,termStats,project,plan,lastLogged,addDays,eventsOn,kindOn,isClassDay,dow,todayKey} from "./js/academic-calendar.js";
+import {API} from "./js/config.js";
+import {SOURCE,TERMS,KINDS,termFor,termOn,termById,termStats,project,plan,lastLogged,addDays,eventsOn,kindOn,isClassDay,dow,todayKey,setExtraEvents,termEvents} from "./js/academic-calendar.js";
 const $=id=>document.getElementById(id), td=todayKey();
 const f1=x=>x.toFixed(1)+'%', pc=(a,c)=>c?a/c*100:0;
 const fmt=k=>new Date(k).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
@@ -79,11 +80,11 @@ function cal(){let out='';const [y0,m0]=T.start.split('-').map(Number),[y1,m1]=T
  $('months').innerHTML=out;$('calh').textContent=T.name;
  $('months').querySelectorAll('.kd,.cls').forEach(el=>el.onclick=()=>{$('months').querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');const k=el.dataset.d,ev=eventsOn(k);
   $('detail').className='';$('detail').innerHTML=`<b>${new Date(k).toDateString()}</b> — ${isClassDay(T,k)?'regular class day':'no regular classes'}${ev.length?'<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'+ev.map(e=>`<span class="kpill" style="--k:${KINDS[e.kind].color}">${e.label}</span>`).join('')+'</div>':''}`});
- const used=new Set(T.events.map(e=>e.kind));
+ const used=new Set(termEvents(T).map(e=>e.kind));
  $('legend').innerHTML='<span style="--c:color-mix(in srgb,var(--p) 35%,transparent)">Class day</span>'+Object.entries(KINDS).filter(([k])=>used.has(k)).map(([,v])=>`<span style="--c:${v.color}">${v.label}</span>`).join('');
  $('detail').className='mut';$('detail').textContent='Click a coloured day for details.'}
 
-function evs(){$('evs').innerHTML='<tr><th>Dates</th><th>Event</th><th>Type</th><th class="n">Days</th><th>Status</th></tr>'+[...T.events].sort((a,b)=>a.start<b.start?-1:1).map(e=>{
+function evs(){$('evs').innerHTML='<tr><th>Dates</th><th>Event</th><th>Type</th><th class="n">Days</th><th>Status</th></tr>'+termEvents(T).sort((a,b)=>a.start<b.start?-1:1).map(e=>{
   const n=Math.round((new Date(e.end)-new Date(e.start))/864e5)+1,past=e.end<td,now=e.start<=td&&td<=e.end,inD=Math.round((new Date(e.start)-new Date(td))/864e5);
   return `<tr class="${past?'past':''}"><td>${fmt(e.start)}${e.end!==e.start?' – '+fmt(e.end):''}</td><td>${e.label}</td><td>${kp(e.kind)}</td><td class="n">${n}</td><td>${past?'done':now?'<b>ongoing</b>':inD===1?'tomorrow':'in '+inD+' days'}</td></tr>`}).join('')}
 
@@ -95,7 +96,9 @@ function mtab(){let h='<tr><th>Month</th><th class="n">Class days</th><th class=
  $('mtab').innerHTML=h+`<tr style="font-weight:700"><td>Total</td>${['classDays','done','holidays','examDays','sundays'].map(k=>`<td class="n">${tot[k]}</td>`).join('')}</tr>`}
 
 function render(){tabs();tiles();mine();cal();evs();mtab()}
-tgt.onchange=mine;render();
+tgt.onchange=mine;
+try{const r=await fetch(API+'/api/calendar',{cache:'no-store'});const j=await r.json();setExtraEvents(j.events||[])}catch(e){}
+render();
 </script>
 <script type="module" src="js/feedback.js"></script>
 </body></html>

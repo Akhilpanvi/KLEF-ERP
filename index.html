@@ -43,8 +43,10 @@
 </div></div>
 <script type="module">
 import {API} from "./js/config.js";
-import {KINDS,termFor,termStats,project,plan,slotsOf,timetable,lastLogged,addDays,eventsOn,kindOn,isClassDay,dow,todayKey} from "./js/academic-calendar.js";
+import {KINDS,termFor,termStats,project,plan,slotsOf,timetable,lastLogged,addDays,eventsOn,kindOn,isClassDay,dow,todayKey,setExtraEvents} from "./js/academic-calendar.js";
 let META,D,TERM,PROJ,TS;
+// apply the admin calendar overlay (added holidays/events) before anything renders
+try{const _r=await fetch(API+'/api/calendar',{cache:'no-store'});const _j=await _r.json();setExtraEvents(_j.events||[])}catch(e){}
 const tcase=s=>s.toLowerCase().replace(/\b\w/g,m=>m.toUpperCase()).replace(/\b(And|For|Of|To|In)\b/g,x=>x.toLowerCase());
 const T={L:'Lecture',P:'Practical',S:'Skill',T:'Tutorial'};
 const pc=(a,c)=>c?a/c*100:0, f1=x=>x.toFixed(1)+'%';
