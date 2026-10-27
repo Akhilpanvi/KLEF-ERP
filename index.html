@@ -9,17 +9,17 @@
 <div id="lerr" style="color:var(--a);font-size:13px"></div>
 <input name="username" placeholder="Username" required autocomplete="username">
 <input name="password" type="password" placeholder="Password" required autocomplete="current-password">
-<img id="cap" alt="captcha" title="Click for a new captcha" style="height:50px;align-self:flex-start;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer">
-<a href="#" id="newcap" style="font-size:13px;color:var(--acc)">New captcha</a>
-<input name="captcha" placeholder="Enter verification code" required autocomplete="off">
-<div id="capst" class="mut" style="font-size:12px;margin-top:-4px;min-height:15px"></div>
+<div class="caprow"><img id="cap" alt="captcha" title="Tap for a new captcha"><input name="captcha" placeholder="Verification code" required autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="newcap" title="New captcha" aria-label="New captcha">↻</button></div>
+<div id="capst"></div>
 <input name="mfa" placeholder="MFA code (only if you use MFA)" autocomplete="one-time-code">
 <div style="display:flex;gap:8px"><input name="year" style="flex:1;min-width:0" title="Academic year"><select name="sem" style="flex:1"><option>Odd Sem</option><option>Even Sem</option><option>Summer Term</option><option>Term3</option></select></div>
 <button id="lbtn" class="on" style="padding:10px">Login &amp; fetch attendance</button>
 <a href="#" id="cancel" style="font-size:13px;color:var(--acc);text-align:center;display:none">← back to saved report</a>
 <p class="mut" style="font-size:12px;margin:0">Your password goes straight to the KL ERP and is never stored. Your full report is saved only in this browser; a summary (course-wise class counts, keyed by your username) is kept for the admin dashboard.</p>
 </form></div>
-<style>#lf input,#lf select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}</style><div id="report" style="display:none">
+<style>.caprow{display:flex;gap:8px;align-items:center}.caprow img{height:38px;width:91px;flex:none;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;object-fit:contain}.caprow input{flex:1;min-width:0;letter-spacing:.5px}.caprow button{flex:none;width:38px;height:38px;padding:0;font-size:18px;cursor:pointer}
+#capst{font-size:12px;margin-top:-4px;min-height:15px;color:var(--mut)}#capst.ok{color:var(--p);font-weight:600}
+#lf input,#lf select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}</style><div id="report" style="display:none">
 <nav class="top"><a href="./" class="cur">Attendance</a><a href="calendar">Academic calendar</a></nav>
 <header><div><h1>Attendance Report</h1><div class="mut"><span id="who"></span>KL University · <span id="term"></span></div></div>
 <div style="text-align:right"><div class="mut" id="asof"></div><a href="#" id="refresh" style="display:inline-block;margin-top:6px;padding:6px 12px;border-radius:8px;background:var(--acc);color:#fff;text-decoration:none">↻ Refresh from ERP</a></div></header>
@@ -42,7 +42,6 @@
 </div></div>
 <script type="module">
 import {API} from "./js/config.js";
-import {solve,warmUp} from "./js/captcha-solver.js";
 import {KINDS,termFor,termStats,project,plan,lastLogged,addDays,eventsOn,kindOn,todayKey} from "./js/academic-calendar.js";
 let META,D,TERM,PROJ,TS;
 const tcase=s=>s.toLowerCase().replace(/\b\w/g,m=>m.toUpperCase()).replace(/\b(And|For|Of|To|In)\b/g,x=>x.toLowerCase());
@@ -94,13 +93,12 @@ cf.innerHTML='<option value="all">All courses</option>'+D.map(c=>`<option value=
 tgt.onchange=all;cf.onchange=()=>{cal();detail.className='mut';detail.textContent='Click a day to see every hour and what the academic calendar says about it.'};
 const $=id=>document.getElementById(id);
 function showReport(v){META=v.meta;D=v.d;prep();$('login').style.display='none';$('report').style.display='';boot()}
-async function captcha(){$('cap').src='';$('capst').textContent='';try{const r=await fetch(API+'/api/captcha',{cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error);TOKEN=j.token;$('cap').src=j.img;autofill()}catch(e){$('lerr').textContent='Could not reach the KL ERP: '+e.message}}
-// read the captcha on-device and fill it in, unless the student has typed something themselves
+async function captcha(){const f=$('lf'),st=$('capst');$('cap').src='';st.className='';st.textContent='Loading captcha…';if(f.captcha.value===autoCode)f.captcha.value='';
+ try{const r=await fetch(API+'/api/captcha',{cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error);TOKEN=j.token;$('cap').src=j.img;
+  // the backend's reading of the captcha, shown pre-filled next to the image; anything the student typed wins
+  if(j.guess&&!f.captcha.value){f.captcha.value=autoCode=j.guess;st.className='ok';st.textContent='✓ Auto-filled'}else st.textContent=''}
+ catch(e){st.textContent='';$('lerr').textContent='Could not reach the KL ERP: '+e.message}}
 let autoCode='',TOKEN='';
-async function autofill(){const img=$('cap'),f=$('lf'),src=img.src;$('capst').textContent='Reading captcha…';
- try{await img.decode();const code=await solve(img);if(img.src!==src)return;
-  if(!f.captcha.value||f.captcha.value===autoCode){f.captcha.value=autoCode=code;$('capst').textContent='✨ Auto-filled — check it matches the image'}else $('capst').textContent=''}
- catch(e){if(img.src===src)$('capst').textContent='Auto-fill unavailable — type the code'}}
 function showLogin(err=''){$('report').style.display='none';$('login').style.display='';$('lerr').textContent=err;
  const f=$('lf'),n=new Date(),y=n.getFullYear(),odd=n.getMonth()>=6;if(!f.year.value){f.year.value=odd?y+'-'+(y+1):(y-1)+'-'+y;f.sem.value=odd?'Odd Sem':'Even Sem'}
  f.captcha.value='';autoCode='';f.mfa.value='';$('cancel').style.display=saved()?'':'none';captcha()}
@@ -109,7 +107,7 @@ $('lf').onsubmit=async e=>{e.preventDefault();const b=$('lbtn');b.disabled=true;
  try{const r=await fetch(API+'/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...Object.fromEntries(new FormData($('lf'))),token:TOKEN})});const j=await r.json();
   if(!r.ok)throw new Error(j.error||'Failed');try{localStorage.setItem('klatt',JSON.stringify(j))}catch(e){}$('lf').password.value='';showReport(j)}
  catch(err){showLogin(err.message)}finally{b.disabled=false;b.textContent='Login & fetch attendance'}};
-$('newcap').onclick=e=>{e.preventDefault();captcha()};$('cap').onclick=captcha;$('lf').captcha.oninput=()=>$('capst').textContent='';warmUp();$('refresh').onclick=e=>{e.preventDefault();showLogin()};$('cancel').onclick=e=>{e.preventDefault();showReport(saved())};
+$('newcap').onclick=captcha;$('cap').onclick=captcha;$('lf').captcha.oninput=()=>{const st=$('capst');st.className='';st.textContent=''};$('refresh').onclick=e=>{e.preventDefault();showLogin()};$('cancel').onclick=e=>{e.preventDefault();showReport(saved())};
 const s=saved();s&&s.d?showReport(s):showLogin();
 </script>
 <script type="module" src="js/feedback.js"></script>

@@ -4,7 +4,7 @@ Static site: no build step, no server code. It talks to the private backend (KLE
 
 | Page | What it shows |
 |---|---|
-| `index.html` | KL ERP login (captcha auto-filled on-device) → attendance report with the academic calendar overlaid |
+| `index.html` | KL ERP login (captcha shown with the code pre-filled) → attendance report with the academic calendar overlaid |
 | `calendar.html` | 2026-27 academic calendar: class days, holidays, exam days, upcoming events, your own projection |
 | `admin.html` | Password-protected stats for every student, plus feedback |
 
@@ -24,5 +24,5 @@ Any static host works:
 
 ## Files
 - `js/academic-calendar.js`: the 2026-27 calendar data and maths (a copy also lives in the backend).
-- `js/captcha-solver.js` + `model/captcha.onnx`: on-device captcha reader (onnxruntime-web). The model is trained in the backend repo.
+- The captcha comes pre-filled: the backend reads it and returns its guess with the image (the student still sees both).
 - `js/feedback.js`: feedback widget.
