@@ -2,8 +2,9 @@
 import { API } from "./config.js";
 
 const css = `
-#fbBtn{position:fixed;right:18px;bottom:18px;z-index:50;padding:10px 16px;border-radius:99px;border:none;background:var(--acc);color:#fff;font:600 14px Inter,system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer}
-#fbDlg{border:1px solid var(--line);border-radius:14px;padding:20px;width:min(420px,calc(100vw - 32px));background:var(--card);color:var(--ink)}
+#fbBtn{position:fixed;right:18px;bottom:18px;z-index:50;padding:10px 16px;border-radius:99px;border:none;background:var(--acc);color:#fff;font:600 14px Inter,system-ui,sans-serif;box-shadow:var(--shadow-lg);cursor:pointer;font-weight:600;transition:transform .08s,filter .15s}
+#fbBtn:hover{filter:brightness(1.06)}#fbBtn:active{transform:translateY(1px)}
+#fbDlg{border:1px solid var(--line);border-radius:16px;padding:22px;width:min(420px,calc(100vw - 32px));background:var(--card);color:var(--ink);box-shadow:var(--shadow-lg)}
 #fbDlg::backdrop{background:rgba(0,0,0,.35)}
 #fbDlg form{display:flex;flex-direction:column;gap:10px}
 #fbDlg textarea,#fbDlg input{font:inherit;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);width:100%}

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Attendance · 2026-27 Odd Sem</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 </head><body><div class="wrap"><div id="login" class="card" style="max-width:380px;margin:40px auto;display:none">
 <h2 style="color:var(--acc);text-align:center">KL ERP Login</h2>
@@ -17,9 +17,7 @@
 <a href="#" id="cancel" style="font-size:13px;color:var(--acc);text-align:center;display:none">← back to saved report</a>
 <p class="mut" style="font-size:12px;margin:0">Your password goes straight to the KL ERP and is never stored. Your full report is saved only in this browser; a summary (course-wise class counts, keyed by your username) is kept for the admin dashboard.</p>
 </form></div>
-<style>.caprow{display:flex;gap:8px;align-items:center}.caprow img{height:38px;width:91px;flex:none;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;object-fit:contain}.caprow input{flex:1;min-width:0;letter-spacing:.5px}.caprow button{flex:none;width:38px;height:38px;padding:0;font-size:18px;cursor:pointer}
-#capst{font-size:12px;margin-top:-4px;min-height:15px;color:var(--mut)}#capst.ok{color:var(--p);font-weight:600}
-#lf input,#lf select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}</style><div id="report" style="display:none">
+<div id="report" style="display:none">
 <nav class="top"><a href="./" class="cur">Attendance</a><a href="calendar">Academic calendar</a></nav>
 <header><div><h1>Attendance Report</h1><div class="mut"><span id="who"></span>KL University · <span id="term"></span></div></div>
 <div style="text-align:right"><div class="mut" id="asof"></div><a href="#" id="refresh" style="display:inline-block;margin-top:6px;padding:6px 12px;border-radius:8px;background:var(--acc);color:#fff;text-decoration:none">↻ Refresh from ERP</a></div></header>
