@@ -67,7 +67,7 @@ function mine(){const b=$('mineBody');
  <div class="scroll"><table><tr><th>Code</th><th>Course</th><th>Type</th><th class="n">Held</th><th class="n">Attended</th><th class="n">Now</th><th class="n">Left (est.)</th><th class="n">Best possible</th><th>At ${tgt.value}%</th></tr>
  ${rows.map(x=>`<tr><td>${x.c.code}</td><td>${tcase(x.c.name)}</td><td>${LT[x.c.ltps]||x.c.ltps}</td><td class="n">${x.c.tc}</td><td class="n">${x.c.ta}</td><td class="n">${f1(pc(x.c.ta,x.c.tc))}</td><td class="n">~${x.r}</td><td class="n">${f1(x.best)}</td><td>${st(x)}</td></tr>`).join('')}
  <tr style="font-weight:700"><td></td><td>TOTAL</td><td></td><td class="n">${tc}</td><td class="n">${ta}</td><td class="n">${f1(pc(ta,tc))}</td><td class="n">~${R}</td><td class="n">${f1(all.best)}</td><td>${st({...all,r:R})}</td></tr></table></div>
- <p class="mut" style="font-size:12px;margin:10px 0 0">Register covers classes up to ${asOf?fmt(asOf):'—'} (fetched ${saved.meta.at}). "Left" is estimated from how often each course met on each weekday so far, applied to the class days still ahead.</p>`}
+ <p class="mut" style="font-size:12px;margin:10px 0 0">Register covers classes up to ${asOf?fmt(asOf):'—'} (fetched ${saved.meta.at}). "Left" comes from your weekly timetable (reconstructed from attendance) applied to the class days still ahead, discounting the usual cancellation rate.</p>`}
 
 function cal(){let out='';const [y0,m0]=T.start.split('-').map(Number),[y1,m1]=T.end.split('-').map(Number);
  for(let y=y0,mo=m0;y<y1||(y===y1&&mo<=m1);mo===12?(y++,mo=1):mo++){const first=new Date(y,mo-1,1),n=new Date(y,mo,0).getDate();

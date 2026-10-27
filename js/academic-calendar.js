@@ -108,22 +108,56 @@ export function termStats(t, today = todayKey(), from = t.start, to = t.end) {
   return s;
 }
 
+// A (weekday, hour) slot counts as a regular weekly class once it has been held on at least
+// this fraction of that weekday's class days — filters out one-off / rescheduled extra hours.
+const SLOT_THRESH = 0.4;
+
 /**
- * Estimate how many more classes each course will hold this term.
- * Per weekday: (classes the course held on that weekday) / (class days on that weekday so far),
- * multiplied by the class days on that weekday still ahead. `asOf` = last date the register covers.
+ * Reconstruct each course's weekly timetable from its attendance register (the realized schedule),
+ * using class days from `t.classStart` up to `asOf`. Returns per course a list of regular slots
+ * { w: weekday 0-6, h: ERP hour, held, of, ratio }, sorted by weekday then hour.
+ */
+export function slotsOf(t, courses, asOf) {
+  const wdDays = Array(7).fill(0);
+  for (const k of range(t.classStart, asOf)) if (isClassDay(t, k)) wdDays[dow(k)]++;
+  return courses.map((c) => {
+    const cnt = {};
+    for (const [k, h] of c.s) if (k >= t.classStart && k <= asOf && isClassDay(t, k)) cnt[`${dow(k)}-${h}`] = (cnt[`${dow(k)}-${h}`] || 0) + 1;
+    return Object.entries(cnt).map(([key, held]) => {
+      const [w, h] = key.split("-").map(Number);
+      return { w, h, held, of: wdDays[w], ratio: wdDays[w] ? held / wdDays[w] : 0 };
+    }).filter((s) => s.ratio >= SLOT_THRESH).sort((a, b) => a.w - b.w || a.h - b.h);
+  });
+}
+
+/**
+ * How many more classes each course will hold this term, from its weekly timetable:
+ * each regular slot contributes (its hold-rate) × (class days on that weekday still ahead),
+ * so realistic cancellations are already discounted. `asOf` = last date the register covers.
  */
 export function project(t, courses, asOf) {
-  const seen = Array(7).fill(0), ahead = Array(7).fill(0);
-  for (const k of range(t.classStart, t.lastClass)) if (isClassDay(t, k)) (k <= asOf ? seen : ahead)[dow(k)]++;
+  const ahead = Array(7).fill(0);
+  for (const k of range(addDays(asOf, 1), t.lastClass)) if (isClassDay(t, k)) ahead[dow(k)]++;
+  const slots = slotsOf(t, courses, asOf);
   return {
     left: ahead.reduce((a, b) => a + b, 0),
-    rem: courses.map((c) => {
-      const per = Array(7).fill(0);
-      c.s.forEach(([k]) => isClassDay(t, k) && per[dow(k)]++);
-      return Math.round(per.reduce((sum, n, w) => sum + (seen[w] ? (n / seen[w]) * ahead[w] : 0), 0));
-    }),
+    slots,
+    rem: slots.map((ss) => Math.round(ss.reduce((sum, s) => sum + s.ratio * ahead[s.w], 0))),
   };
+}
+
+/**
+ * A weekly timetable grid for display: rows = ERP hours actually used, columns = Mon..Sat.
+ * Returns { hours: [h…], cell(h, weekday) → [{ i, code, ltps, sec }] }. `asOf` defaults to the last logged day.
+ */
+export function timetable(t, courses, asOf = lastLogged(courses)) {
+  const slots = slotsOf(t, courses, asOf || addDays(t.classStart, -1));
+  const hours = new Set(), grid = {};
+  slots.forEach((ss, i) => ss.forEach((s) => {
+    hours.add(s.h);
+    (grid[`${s.h}-${s.w}`] ||= []).push({ i, code: courses[i].code, ltps: courses[i].ltps, sec: courses[i].sec });
+  }));
+  return { hours: [...hours].sort((a, b) => a - b), cell: (h, w) => grid[`${h}-${w}`] || [] };
 }
 
 /** With `rem` classes left and target fraction `t`: best reachable %, and how many of `rem` can still be missed (<0 = target out of reach). */

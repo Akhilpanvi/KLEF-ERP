@@ -3,6 +3,7 @@
 <title>Attendance · 2026-27 Odd Sem</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
+<style>.ttgrid{border-collapse:separate;border-spacing:0}.ttgrid th,.ttgrid td{text-align:center;white-space:nowrap}.ttgrid td{vertical-align:top}.ttcell{border-radius:7px;padding:4px 7px;font-size:11px;font-weight:700;margin:2px 0;line-height:1.25}.ttcell small{display:block;font-weight:500;opacity:.85;font-size:9px}.ttempty{height:4px}</style>
 </head><body><div class="wrap"><div id="login" class="card" style="max-width:380px;margin:40px auto;display:none">
 <h2 style="color:var(--acc);text-align:center">KL ERP Login</h2>
 <form id="lf" style="display:flex;flex-direction:column;gap:10px">
@@ -26,7 +27,7 @@
 <div class="card"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Course structure &amp; consolidated attendance</h2>
 <label class="mut">Target % <select id="tgt"><option>75</option><option>80</option><option selected>85</option></select></label></div>
 <div class="scroll"><table id="ctab"></table></div>
-<p class="mut" style="font-size:12px;margin:10px 0 0">L = Lecture, P = Practical, S = Skill. "Weighted %" is the ERP's own figure. "To reach" = classes in a row you'd need to attend to get to the target; "Can skip" = classes you could miss and still stay at the target. "Rest of semester" uses the academic calendar: it estimates the classes still to come until the last instruction day (skipping Sundays, holidays and exam weeks) from how often each course has met on each weekday so far. Pick the target your department uses.</p></div>
+<p class="mut" style="font-size:12px;margin:10px 0 0">L = Lecture, P = Practical, S = Skill. "Weighted %" is the ERP's own figure. "To reach" = classes in a row you'd need to attend to get to the target; "Can skip" = classes you could miss and still stay at the target. "Rest of semester" uses your weekly timetable (reconstructed below) and the academic calendar: it counts the classes each slot will still hold until the last instruction day, skipping Sundays, holidays and exam weeks, and discounts the usual cancellation rate. Pick the target your department uses.</p></div>
 
 <div class="card"><h2>Attendance calendar</h2>
 <div class="controls"><select id="cf"></select></div>
@@ -34,13 +35,15 @@
 <div class="legend" style="flex-wrap:wrap"><span style="--c:var(--p)">All present</span><span style="--c:var(--mix)">Some absent</span><span style="--c:var(--a)">All absent</span><span id="klegend" style="display:contents"></span></div>
 <div id="detail" class="mut">Click a day to see every hour and what the academic calendar says about it.</div></div>
 
+<div class="card"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Weekly timetable</h2><span class="mut" style="font-size:12px">reconstructed from your attendance · drives the projection</span></div><div class="scroll"><div id="tt"></div></div></div>
+
 <div class="card"><h2>Course-wise register</h2><div id="reg"></div></div>
 
 <div class="card"><h2>Days with absences</h2><div class="scroll"><table id="abs"></table></div></div>
 </div></div>
 <script type="module">
 import {API} from "./js/config.js";
-import {KINDS,termFor,termStats,project,plan,lastLogged,addDays,eventsOn,kindOn,todayKey} from "./js/academic-calendar.js";
+import {KINDS,termFor,termStats,project,plan,slotsOf,timetable,lastLogged,addDays,eventsOn,kindOn,isClassDay,dow,todayKey} from "./js/academic-calendar.js";
 let META,D,TERM,PROJ,TS;
 const tcase=s=>s.toLowerCase().replace(/\b\w/g,m=>m.toUpperCase()).replace(/\b(And|For|Of|To|In)\b/g,x=>x.toLowerCase());
 const T={L:'Lecture',P:'Practical',S:'Skill',T:'Tutorial'};
@@ -75,6 +78,17 @@ function cal(){const m=byDay(),td=todayKey();let out='';const ds=D.flatMap(c=>c.
  months.innerHTML=out;months.querySelectorAll('.has,.ev').forEach(el=>{el.style.cursor='pointer';el.onclick=()=>{months.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');show(el.dataset.d,m[el.dataset.d]||[])}});
  const used=new Set((TERM?TERM.events:[]).map(e=>e.kind));klegend.innerHTML=Object.entries(KINDS).filter(([k])=>used.has(k)).map(([,v])=>`<span style="--c:${v.color}">${v.label}</span>`).join('')}
 function show(d,e){e.sort((a,b)=>a.h-b.h);detail.classList.remove('mut');detail.innerHTML=`<b>${new Date(d).toDateString()}</b> ${eventsOn(d).map(x=>`<span class="kpill" style="--k:${KINDS[x.kind].color}">${x.label}</span>`).join(' ')}`+(!e.length?'<p class="mut" style="margin:8px 0 0">No classes logged on this day.</p>':`<table style="margin-top:8px"><tr><th>Hour</th><th>Course</th><th>Section</th><th>Status</th></tr>${e.map(x=>`<tr><td>${x.h}</td><td>${lab(x.c)}</td><td>${x.c.sec}</td><td class="mark ${x.k}">${x.k==='P'?'Present':x.k==='A'?'Absent':x.k}</td></tr>`).join('')}</table>`)}
+const DOWN=['','Mon','Tue','Wed','Thu','Fri','Sat'];
+const HUE=i=>`hsl(${(i*67)%360} 62% ${matchMedia('(prefers-color-scheme:dark)').matches?'42%':'86%'})`;
+const HUEI=i=>`hsl(${(i*67)%360} 70% ${matchMedia('(prefers-color-scheme:dark)').matches?'86%':'28%'})`;
+function ttable(){const el=document.getElementById('tt');if(!TERM){el.innerHTML='<p class="mut" style="margin:0">Timetable needs the academic calendar for this term.</p>';return}
+ const asOf=lastLogged(D)||addDays(TERM.classStart,-1),tt=timetable(TERM,D,asOf);
+ if(!tt.hours.length){el.innerHTML='<p class="mut" style="margin:0">Not enough classes logged yet to work out a weekly pattern.</p>';return}
+ let days=[1,2,3,4,5,6].filter(w=>tt.hours.some(h=>tt.cell(h,w).length)); // drop empty columns (e.g. Sat)
+ let h=`<table class="ttgrid"><tr><th>Hour</th>${days.map(w=>`<th>${DOWN[w]}</th>`).join('')}</tr>`;
+ for(const hr of tt.hours){h+=`<tr><td class="mut" style="font-weight:600">H${hr}</td>`+days.map(w=>{const cs=tt.cell(hr,w);
+   return `<td style="padding:3px">${cs.map(x=>`<div class="ttcell" title="${lab(D[x.i])} · ${D[x.i].sec}" style="background:${HUE(x.i)};color:${HUEI(x.i)}">${x.code}<small>${T[x.ltps]?.[0]||x.ltps||''}</small></div>`).join('')||'<div class="ttempty"></div>'}</td>`}).join('')+'</tr>';}
+ el.innerHTML=h+'</table>';}
 function reg(){document.getElementById('reg').innerHTML=D.map(c=>`<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><b>${c.code} · ${lab(c)}</b><span class="mut">${c.ta}/${c.tc} · ${c.pct}</span></div><div class="dots">${c.s.map(([d,h,k])=>`<div class="dot" title="${d} · Hour ${h} · ${k==='P'?'Present':'Absent'}" style="background:${k==='P'?'var(--p)':k==='A'?'var(--a)':'var(--mut)'}"></div>`).join('')}</div></div>`).join('')+'<p class="mut" style="font-size:12px">Each square is one class hour, oldest first. Hover over a square to see the date and hour.</p>'}
 function abs(){const m={};D.forEach(c=>c.s.forEach(([d,h,k])=>{if(k==='A')(m[d]=m[d]||[]).push(lab(c)+' · H'+h)}));const ks=Object.keys(m).sort();
  document.getElementById('abs').innerHTML='<tr><th>Date</th><th>Day</th><th class="n">Hours missed</th><th>Classes</th></tr>'+ks.map(k=>`<tr><td>${k.split('-').reverse().join('/')}</td><td>${new Date(k).toLocaleDateString('en',{weekday:'short'})}</td><td class="n">${m[k].length}</td><td style="white-space:normal">${m[k].join(', ')}</td></tr>`).join('')}
@@ -87,7 +101,7 @@ function rest(ta,tc,r){const {best,skip}=plan(ta,tc,r,+tgt.value/100),pre=`<span
 function all(){tiles();ctab()}
 function boot(){TERM=termFor(META.year,META.sem);if(TERM){PROJ=project(TERM,D,lastLogged(D)||addDays(TERM.classStart,-1));TS=termStats(TERM)}
 who.textContent=META.id?META.id+' · ':'';term.textContent=META.year+' '+META.sem;asof.textContent='Fetched from KL ERP · '+META.at;
-cf.innerHTML='<option value="all">All courses</option>'+D.map(c=>`<option value="${c.id}">${lab(c)}</option>`).join('');detail.className='mut';detail.textContent='Click a day to see every hour and what the academic calendar says about it.';all();cal();reg();abs()}
+cf.innerHTML='<option value="all">All courses</option>'+D.map(c=>`<option value="${c.id}">${lab(c)}</option>`).join('');detail.className='mut';detail.textContent='Click a day to see every hour and what the academic calendar says about it.';all();cal();ttable();reg();abs()}
 tgt.onchange=all;cf.onchange=()=>{cal();detail.className='mut';detail.textContent='Click a day to see every hour and what the academic calendar says about it.'};
 const $=id=>document.getElementById(id);
 function showReport(v){META=v.meta;D=v.d;prep();$('login').style.display='none';$('report').style.display='';boot()}
