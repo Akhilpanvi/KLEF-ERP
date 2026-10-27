@@ -11,7 +11,7 @@
 <input name="password" type="password" placeholder="Password" required autocomplete="current-password">
 <div class="caprow"><img id="cap" alt="captcha" title="Tap for a new captcha"><input name="captcha" placeholder="Verification code" required autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="newcap" title="New captcha" aria-label="New captcha">↻</button></div>
 <div id="capst"></div>
-<input name="mfa" placeholder="MFA code (only if you use MFA)" autocomplete="one-time-code">
+<div id="mfaWrap" style="display:none"><input name="mfa" placeholder="MFA code" autocomplete="one-time-code" inputmode="numeric" style="width:100%"><div class="mut" style="font-size:12px;margin-top:4px">Your account has MFA on — enter the code from your authenticator.</div></div>
 <div style="display:flex;gap:8px"><input name="year" style="flex:1;min-width:0" title="Academic year"><select name="sem" style="flex:1"><option>Odd Sem</option><option>Even Sem</option><option>Summer Term</option><option>Term3</option></select></div>
 <button id="lbtn" class="on" style="padding:10px">Login &amp; fetch attendance</button>
 <a href="#" id="cancel" style="font-size:13px;color:var(--acc);text-align:center;display:none">← back to saved report</a>
@@ -96,18 +96,21 @@ function showReport(v){META=v.meta;D=v.d;prep();$('login').style.display='none';
 async function captcha(){const f=$('lf'),st=$('capst');$('cap').src='';st.className='';st.textContent='Loading captcha…';if(f.captcha.value===autoCode)f.captcha.value='';
  try{const r=await fetch(API+'/api/captcha',{cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error);TOKEN=j.token;$('cap').src=j.img;
   // the backend's reading of the captcha, shown pre-filled next to the image; anything the student typed wins
-  if(j.guess&&!f.captcha.value){f.captcha.value=autoCode=j.guess;st.className='ok';st.textContent='✓ Auto-filled'}else st.textContent=''}
+  if(j.guess&&!f.captcha.value){f.captcha.value=autoCode=j.guess;st.className='ok';st.textContent='✓ Auto-filled'}else st.textContent='';if(f.username.value.trim())mfaCheck()}
  catch(e){st.textContent='';$('lerr').textContent='Could not reach the KL ERP: '+e.message}}
 let autoCode='',TOKEN='';
+async function mfaCheck(){const f=$('lf'),u=f.username.value.trim(),w=$('mfaWrap');if(!u||!TOKEN){w.style.display='none';f.mfa.required=false;return}
+ try{const r=await fetch(API+'/api/mfa-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,username:u})});const j=await r.json();
+  w.style.display=j.mfa?'':'none';f.mfa.required=!!j.mfa;if(!j.mfa)f.mfa.value=''}catch(e){w.style.display='none';f.mfa.required=false}}
 function showLogin(err=''){$('report').style.display='none';$('login').style.display='';$('lerr').textContent=err;
  const f=$('lf'),n=new Date(),y=n.getFullYear(),odd=n.getMonth()>=6;if(!f.year.value){f.year.value=odd?y+'-'+(y+1):(y-1)+'-'+y;f.sem.value=odd?'Odd Sem':'Even Sem'}
- f.captcha.value='';autoCode='';f.mfa.value='';$('cancel').style.display=saved()?'':'none';captcha()}
+ f.captcha.value='';autoCode='';f.mfa.value='';f.mfa.required=false;$('mfaWrap').style.display='none';$('cancel').style.display=saved()?'':'none';captcha()}
 const saved=()=>{try{return JSON.parse(localStorage.getItem('klatt'))}catch(e){return null}};
 $('lf').onsubmit=async e=>{e.preventDefault();const b=$('lbtn');b.disabled=true;b.textContent='Logging in & fetching…';$('lerr').textContent='';
  try{const r=await fetch(API+'/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...Object.fromEntries(new FormData($('lf'))),token:TOKEN})});const j=await r.json();
   if(!r.ok)throw new Error(j.error||'Failed');try{localStorage.setItem('klatt',JSON.stringify(j))}catch(e){}$('lf').password.value='';showReport(j)}
  catch(err){showLogin(err.message)}finally{b.disabled=false;b.textContent='Login & fetch attendance'}};
-$('newcap').onclick=captcha;$('cap').onclick=captcha;$('lf').captcha.oninput=()=>{const st=$('capst');st.className='';st.textContent=''};$('refresh').onclick=e=>{e.preventDefault();showLogin()};$('cancel').onclick=e=>{e.preventDefault();showReport(saved())};
+$('newcap').onclick=captcha;$('cap').onclick=captcha;$('lf').username.onchange=mfaCheck;$('lf').username.onblur=mfaCheck;$('lf').captcha.oninput=()=>{const st=$('capst');st.className='';st.textContent=''};$('refresh').onclick=e=>{e.preventDefault();showLogin()};$('cancel').onclick=e=>{e.preventDefault();showReport(saved())};
 const s=saved();s&&s.d?showReport(s):showLogin();
 </script>
 <script type="module" src="js/feedback.js"></script>
