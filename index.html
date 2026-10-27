@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attendance · 2026-27 Odd Sem</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head><body><div class="wrap"><div id="login" class="card" style="max-width:380px;margin:40px auto;display:none">
+<h2 style="color:var(--acc);text-align:center">KL ERP Login</h2>
+<form id="lf" style="display:flex;flex-direction:column;gap:10px">
+<div id="lerr" style="color:var(--a);font-size:13px"></div>
+<input name="username" placeholder="Username" required autocomplete="username">
+<input name="password" type="password" placeholder="Password" required autocomplete="current-password">
+<img id="cap" alt="captcha" title="Click for a new captcha" style="height:50px;align-self:flex-start;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer">
+<a href="#" id="newcap" style="font-size:13px;color:var(--acc)">New captcha</a>
+<input name="captcha" placeholder="Enter verification code" required autocomplete="off">
+<div id="capst" class="mut" style="font-size:12px;margin-top:-4px;min-height:15px"></div>
+<input name="mfa" placeholder="MFA code (only if you use MFA)" autocomplete="one-time-code">
+<div style="display:flex;gap:8px"><input name="year" style="flex:1;min-width:0" title="Academic year"><select name="sem" style="flex:1"><option>Odd Sem</option><option>Even Sem</option><option>Summer Term</option><option>Term3</option></select></div>
+<button id="lbtn" class="on" style="padding:10px">Login &amp; fetch attendance</button>
+<a href="#" id="cancel" style="font-size:13px;color:var(--acc);text-align:center;display:none">← back to saved report</a>
+<p class="mut" style="font-size:12px;margin:0">Your password goes straight to the KL ERP and is never stored. Your full report is saved only in this browser; a summary (course-wise class counts, keyed by your username) is kept for the admin dashboard.</p>
+</form></div>
+<style>#lf input,#lf select{padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}</style><div id="report" style="display:none">
+<nav class="top"><a href="./" class="cur">Attendance</a><a href="calendar">Academic calendar</a></nav>
+<header><div><h1>Attendance Report</h1><div class="mut"><span id="who"></span>KL University · <span id="term"></span></div></div>
+<div style="text-align:right"><div class="mut" id="asof"></div><a href="#" id="refresh" style="display:inline-block;margin-top:6px;padding:6px 12px;border-radius:8px;background:var(--acc);color:#fff;text-decoration:none">↻ Refresh from ERP</a></div></header>
+<div class="tiles" id="tiles"></div>
+
+<div class="card"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Course structure &amp; consolidated attendance</h2>
+<label class="mut">Target % <select id="tgt"><option>75</option><option>80</option><option selected>85</option></select></label></div>
+<div class="scroll"><table id="ctab"></table></div>
+<p class="mut" style="font-size:12px;margin:10px 0 0">L = Lecture, P = Practical, S = Skill. "Weighted %" is the ERP's own figure. "To reach" = classes in a row you'd need to attend to get to the target; "Can skip" = classes you could miss and still stay at the target. "Rest of semester" uses the academic calendar: it estimates the classes still to come until the last instruction day (skipping Sundays, holidays and exam weeks) from how often each course has met on each weekday so far. Pick the target your department uses.</p></div>
+
+<div class="card"><h2>Attendance calendar</h2>
+<div class="controls"><select id="cf"></select></div>
+<div class="months" id="months"></div>
+<div class="legend" style="flex-wrap:wrap"><span style="--c:var(--p)">All present</span><span style="--c:var(--mix)">Some absent</span><span style="--c:var(--a)">All absent</span><span id="klegend" style="display:contents"></span></div>
+<div id="detail" class="mut">Click a day to see every hour and what the academic calendar says about it.</div></div>
+
+<div class="card"><h2>Course-wise register</h2><div id="reg"></div></div>
+
+<div class="card"><h2>Days with absences</h2><div class="scroll"><table id="abs"></table></div></div>
+</div></div>
+<script type="module">
+import {API} from "./js/config.js";
+import {solve,warmUp} from "./js/captcha-solver.js";
+import {KINDS,termFor,termStats,project,plan,lastLogged,addDays,eventsOn,kindOn,todayKey} from "./js/academic-calendar.js";
+let META,D,TERM,PROJ,TS;
+const tcase=s=>s.toLowerCase().replace(/\b\w/g,m=>m.toUpperCase()).replace(/\b(And|For|Of|To|In)\b/g,x=>x.toLowerCase());
+const T={L:'Lecture',P:'Practical',S:'Skill',T:'Tutorial'};
+const pc=(a,c)=>c?a/c*100:0, f1=x=>x.toFixed(1)+'%';
+const col=p=>p>=85?'var(--p)':p>=75?'var(--mix)':'var(--a)';
+function prep(){D.forEach((c,i)=>{c.id=i;c.name=tcase(c.name)})}
+function tiles(){const tc=D.reduce((s,c)=>s+c.tc,0),ta=D.reduce((s,c)=>s+c.ta,0);
+ const codes=new Set(D.map(c=>c.code)).size, low=D.filter(c=>pc(c.ta,c.tc)<+tgt.value).length;
+ const days=new Set(D.flatMap(c=>c.s.map(s=>s[0]))).size;
+ document.getElementById('tiles').innerHTML=[['Overall attendance',f1(pc(ta,tc))],['Classes attended',ta+' / '+tc],['Classes missed',tc-ta],['Courses',codes+' ('+D.length+' parts)'],['Working days logged',days],['Below '+tgt.value+'%',low],...calTiles()].map(([k,v])=>`<div class="tile"><span class="mut">${k}</span><b>${v}</b></div>`).join('')}
+function ctab(){const t=+tgt.value/100;let h=`<tr><th>Code</th><th>Course</th><th>Type</th><th>Section</th><th class="n">Held</th><th class="n">Attended</th><th class="n">Absent</th><th>%</th><th class="n">Weighted %</th><th class="n">To reach / Can skip</th><th>Rest of semester</th></tr>`;
+ const g={};D.forEach(c=>(g[c.code]=g[c.code]||[]).push(c));
+ for(const k in g){const cs=g[k];if(cs.length>1){const tc=cs.reduce((s,c)=>s+c.tc,0),ta=cs.reduce((s,c)=>s+c.ta,0);h+=`<tr class="grp"><td>${k}</td><td>${cs[0].name}</td><td colspan="2">${cs.length} components, combined</td><td class="n">${tc}</td><td class="n">${ta}</td><td class="n">${tc-ta}</td><td>${bar(pc(ta,tc))}</td><td></td><td></td><td>${TERM?rest(ta,tc,cs.reduce((s,c)=>s+PROJ.rem[c.id],0)):''}</td></tr>`}
+  cs.forEach(c=>{const p=pc(c.ta,c.tc);const need=Math.max(0,Math.ceil((t*c.tc-c.ta)/(1-t)));const skip=Math.max(0,Math.floor(c.ta/t-c.tc));
+   h+=`<tr><td>${cs.length>1?'':k}</td><td>${cs.length>1?'<span class="mut">↳ '+T[c.ltps]+'</span>':c.name}</td><td>${T[c.ltps]||c.ltps}</td><td>${c.sec}</td><td class="n">${c.tc}</td><td class="n">${c.ta}</td><td class="n">${c.tab}</td><td>${bar(p)}</td><td class="n">${c.wp}</td><td class="n">${need?`<span class="pill bad">attend ${need}</span>`:`<span class="pill ok">skip ${skip}</span>`}</td><td>${TERM?rest(c.ta,c.tc,PROJ.rem[c.id]):'<span class="mut">not in calendar</span>'}</td></tr>`})}
+ const tc=D.reduce((s,c)=>s+c.tc,0),ta=D.reduce((s,c)=>s+c.ta,0);
+ h+=`<tr style="font-weight:700"><td></td><td>TOTAL</td><td></td><td></td><td class="n">${tc}</td><td class="n">${ta}</td><td class="n">${tc-ta}</td><td>${bar(pc(ta,tc))}</td><td></td><td></td><td>${TERM?rest(ta,tc,D.reduce((s,c)=>s+PROJ.rem[c.id],0)):''}</td></tr>`;
+ document.getElementById('ctab').innerHTML=h}
+const bar=p=>`<span class="bar"><i style="width:${p}%;background:${col(p)}"></i></span>${f1(p)}`;
+const lab=c=>c.name+' ('+(T[c.ltps]||c.ltps)+')';
+function byDay(){const m={};D.forEach(c=>{if(cf.value!=='all'&&+cf.value!==c.id)return;c.s.forEach(([d,h,k])=>(m[d]=m[d]||[]).push({c,h,k}))});return m}
+function cal(){const m=byDay(),td=todayKey();let out='';const ds=D.flatMap(c=>c.s.map(s=>s[0])).sort();
+ const lo=[ds[0],TERM?.start].filter(Boolean).sort()[0],hi=[ds.at(-1),TERM?.end].filter(Boolean).sort().at(-1);
+ if(!lo){months.innerHTML='<p class="mut">No classes logged yet.</p>';return}
+ const y0=+lo.slice(0,4),m0=+lo.slice(5,7),y1=+hi.slice(0,4),m1=+hi.slice(5,7);
+ for(let y=y0,mo=m0;y<y1||(y===y1&&mo<=m1);mo===12?(y++,mo=1):mo++){const first=new Date(y,mo-1,1),n=new Date(y,mo,0).getDate();let g='MTWTFSS'.split('').map(x=>`<div class="dow">${x}</div>`).join('');for(let i=0;i<(first.getDay()+6)%7;i++)g+='<div></div>';
+ for(let d=1;d<=n;d++){const key=`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`,e=m[key],k=kindOn(key),a=e?e.filter(x=>x.k==='A').length:0;
+  const cls=['day',e&&'has',k&&'ev',key===td&&'today'].filter(Boolean).join(' '),bg=!e?'':a===0?'var(--p)':a===e.length?'var(--a)':'var(--mix)';
+  const st=[bg&&'background:'+bg,k&&'--k:'+KINDS[k].color].filter(Boolean).join(';');
+  g+=`<div class="${cls}" data-d="${key}" style="${st}" title="${eventsOn(key).map(x=>x.label).join(' · ')}">${d}${e?`<small>${e.length-a}/${e.length}</small>`:''}</div>`}
+ out+=`<div class="mon"><h3>${first.toLocaleString('en',{month:'long'})} ${y}</h3><div class="grid">${g}</div></div>`}
+ months.innerHTML=out;months.querySelectorAll('.has,.ev').forEach(el=>{el.style.cursor='pointer';el.onclick=()=>{months.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');show(el.dataset.d,m[el.dataset.d]||[])}});
+ const used=new Set((TERM?TERM.events:[]).map(e=>e.kind));klegend.innerHTML=Object.entries(KINDS).filter(([k])=>used.has(k)).map(([,v])=>`<span style="--c:${v.color}">${v.label}</span>`).join('')}
+function show(d,e){e.sort((a,b)=>a.h-b.h);detail.classList.remove('mut');detail.innerHTML=`<b>${new Date(d).toDateString()}</b> ${eventsOn(d).map(x=>`<span class="kpill" style="--k:${KINDS[x.kind].color}">${x.label}</span>`).join(' ')}`+(!e.length?'<p class="mut" style="margin:8px 0 0">No classes logged on this day.</p>':`<table style="margin-top:8px"><tr><th>Hour</th><th>Course</th><th>Section</th><th>Status</th></tr>${e.map(x=>`<tr><td>${x.h}</td><td>${lab(x.c)}</td><td>${x.c.sec}</td><td class="mark ${x.k}">${x.k==='P'?'Present':x.k==='A'?'Absent':x.k}</td></tr>`).join('')}</table>`)}
+function reg(){document.getElementById('reg').innerHTML=D.map(c=>`<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><b>${c.code} · ${lab(c)}</b><span class="mut">${c.ta}/${c.tc} · ${c.pct}</span></div><div class="dots">${c.s.map(([d,h,k])=>`<div class="dot" title="${d} · Hour ${h} · ${k==='P'?'Present':'Absent'}" style="background:${k==='P'?'var(--p)':k==='A'?'var(--a)':'var(--mut)'}"></div>`).join('')}</div></div>`).join('')+'<p class="mut" style="font-size:12px">Each square is one class hour, oldest first. Hover over a square to see the date and hour.</p>'}
+function abs(){const m={};D.forEach(c=>c.s.forEach(([d,h,k])=>{if(k==='A')(m[d]=m[d]||[]).push(lab(c)+' · H'+h)}));const ks=Object.keys(m).sort();
+ document.getElementById('abs').innerHTML='<tr><th>Date</th><th>Day</th><th class="n">Hours missed</th><th>Classes</th></tr>'+ks.map(k=>`<tr><td>${k.split('-').reverse().join('/')}</td><td>${new Date(k).toLocaleDateString('en',{weekday:'short'})}</td><td class="n">${m[k].length}</td><td style="white-space:normal">${m[k].join(', ')}</td></tr>`).join('')}
+const fmt=k=>new Date(k).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+function calTiles(){if(!TERM)return[];const n=TS.upcoming[0],sm=x=>`<small style="display:block;font-size:12px;font-weight:500" class="mut">${x}</small>`;
+ return[['Class days left',PROJ.left+sm('until '+fmt(TERM.lastClass)+' (last instruction day)')],
+  ...(n?[[n.inDays<=0?'Happening now':'Next up',(n.inDays<=0?'Today':n.inDays===1?'Tomorrow':'In '+n.inDays+' days')+sm(n.label)]]:[])]}
+function rest(ta,tc,r){const {best,skip}=plan(ta,tc,r,+tgt.value/100),pre=`<span class="mut">~${r} left · </span>`;
+ return pre+(skip<0?`<span class="pill bad">max ${f1(best)}</span>`:skip===0?`<span class="pill bad">attend all</span>`:skip>=r?`<span class="pill ok">can miss all</span>`:`<span class="pill ok">can miss ${skip}</span>`)}
+function all(){tiles();ctab()}
+function boot(){TERM=termFor(META.year,META.sem);if(TERM){PROJ=project(TERM,D,lastLogged(D)||addDays(TERM.classStart,-1));TS=termStats(TERM)}
+who.textContent=META.id?META.id+' · ':'';term.textContent=META.year+' '+META.sem;asof.textContent='Fetched from KL ERP · '+META.at;
+cf.innerHTML='<option value="all">All courses</option>'+D.map(c=>`<option value="${c.id}">${lab(c)}</option>`).join('');detail.className='mut';detail.textContent='Click a day to see every hour and what the academic calendar says about it.';all();cal();reg();abs()}
+tgt.onchange=all;cf.onchange=()=>{cal();detail.className='mut';detail.textContent='Click a day to see every hour and what the academic calendar says about it.'};
+const $=id=>document.getElementById(id);
+function showReport(v){META=v.meta;D=v.d;prep();$('login').style.display='none';$('report').style.display='';boot()}
+async function captcha(){$('cap').src='';$('capst').textContent='';try{const r=await fetch(API+'/api/captcha',{cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error);TOKEN=j.token;$('cap').src=j.img;autofill()}catch(e){$('lerr').textContent='Could not reach the KL ERP: '+e.message}}
+// read the captcha on-device and fill it in, unless the student has typed something themselves
+let autoCode='',TOKEN='';
+async function autofill(){const img=$('cap'),f=$('lf'),src=img.src;$('capst').textContent='Reading captcha…';
+ try{await img.decode();const code=await solve(img);if(img.src!==src)return;
+  if(!f.captcha.value||f.captcha.value===autoCode){f.captcha.value=autoCode=code;$('capst').textContent='✨ Auto-filled — check it matches the image'}else $('capst').textContent=''}
+ catch(e){if(img.src===src)$('capst').textContent='Auto-fill unavailable — type the code'}}
+function showLogin(err=''){$('report').style.display='none';$('login').style.display='';$('lerr').textContent=err;
+ const f=$('lf'),n=new Date(),y=n.getFullYear(),odd=n.getMonth()>=6;if(!f.year.value){f.year.value=odd?y+'-'+(y+1):(y-1)+'-'+y;f.sem.value=odd?'Odd Sem':'Even Sem'}
+ f.captcha.value='';autoCode='';f.mfa.value='';$('cancel').style.display=saved()?'':'none';captcha()}
+const saved=()=>{try{return JSON.parse(localStorage.getItem('klatt'))}catch(e){return null}};
+$('lf').onsubmit=async e=>{e.preventDefault();const b=$('lbtn');b.disabled=true;b.textContent='Logging in & fetching…';$('lerr').textContent='';
+ try{const r=await fetch(API+'/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...Object.fromEntries(new FormData($('lf'))),token:TOKEN})});const j=await r.json();
+  if(!r.ok)throw new Error(j.error||'Failed');try{localStorage.setItem('klatt',JSON.stringify(j))}catch(e){}$('lf').password.value='';showReport(j)}
+ catch(err){showLogin(err.message)}finally{b.disabled=false;b.textContent='Login & fetch attendance'}};
+$('newcap').onclick=e=>{e.preventDefault();captcha()};$('cap').onclick=captcha;$('lf').captcha.oninput=()=>$('capst').textContent='';warmUp();$('refresh').onclick=e=>{e.preventDefault();showLogin()};$('cancel').onclick=e=>{e.preventDefault();showReport(saved())};
+const s=saved();s&&s.d?showReport(s):showLogin();
+</script>
+<script type="module" src="js/feedback.js"></script>
+</body></html>

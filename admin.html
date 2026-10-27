@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attendance Admin</title>
+<meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<style>
+input{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+tr.stu{cursor:pointer}tr.stu:hover td{background:color-mix(in srgb,var(--acc) 5%,transparent)}
+tr.more>td{background:var(--bg);white-space:normal}tr.more table td,tr.more table th{padding:5px 8px}
+.warn{background:var(--al);color:var(--a);border-radius:10px;padding:10px 14px;margin-bottom:18px;font-size:13px}
+.mixp{background:color-mix(in srgb,var(--mix) 20%,transparent);color:var(--mix)}
+</style></head><body><div class="wrap">
+<div id="login" class="card" style="max-width:360px;margin:40px auto">
+<h2 style="color:var(--acc);text-align:center">Admin</h2>
+<form id="lf" style="display:flex;flex-direction:column;gap:10px"><div id="lerr" style="color:var(--a);font-size:13px"></div>
+<input id="pw" type="password" placeholder="Admin password" required autocomplete="current-password" style="padding:9px">
+<button class="on" style="padding:10px">Open dashboard</button></form></div>
+
+<div id="app" style="display:none">
+<nav class="top"><a href="./">Attendance</a><a href="calendar">Academic calendar</a><a href="admin" class="cur">Admin</a></nav>
+<header><div><h1>Calendar statistics · all students</h1><div class="mut" id="sub"></div></div>
+<div style="display:flex;gap:8px"><button id="csv">Download CSV</button><button id="reload">↻ Reload</button><button id="out">Sign out</button></div></header>
+<div id="warn"></div>
+<div class="tiles" id="tiles"></div>
+
+<div class="card"><h2>Terms</h2><div class="scroll"><table id="terms"></table></div></div>
+
+<div class="card"><div class="controls">
+<input id="q" placeholder="Search ID or course code" style="flex:1;min-width:180px">
+<select id="tf"><option value="">All terms</option></select>
+<label class="mut">Target % <select id="tgt"><option>75</option><option>80</option><option selected>85</option></select></label>
+<select id="sort"><option value="pct">Lowest attendance first</option><option value="risk">Most courses out of reach</option><option value="at">Most recently fetched</option><option value="id">ID</option></select></div>
+<div class="scroll"><table id="stu"></table></div>
+<p class="mut" style="font-size:12px;margin:10px 0 0">Click a student to see their courses. "Left" = classes each course is still expected to hold until the last instruction day, estimated from the academic calendar (Sundays, holidays and exam weeks excluded) and how often the course has met on each weekday. "Out of reach" = courses that stay below the target even if every remaining class is attended. Data is as of each student's last fetch.</p></div>
+<div class="card"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Feedback <span class="mut" id="fbn"></span></h2>
+<select id="fbk"><option value="">All types</option><option value="bug">Bugs</option><option value="idea">Ideas</option><option value="calendar">Calendar is wrong</option><option value="other">Other</option></select></div>
+<div class="scroll"><table id="fbt"></table></div></div>
+</div></div>
+<script type="module">
+import {API} from "./js/config.js";
+import {TERMS,KINDS,termById,termStats,plan,todayKey} from "./js/academic-calendar.js";
+const $=id=>document.getElementById(id), td=todayKey();
+const f1=x=>x.toFixed(1)+'%', pc=(a,c)=>c?a/c*100:0;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tcase=s=>s.toLowerCase().replace(/\b\w/g,m=>m.toUpperCase()).replace(/\b(And|For|Of|To|In)\b/g,x=>x.toLowerCase());
+const fmt=k=>k?new Date(k).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—';
+const ago=iso=>{const m=(Date.now()-new Date(iso))/6e4;return m<60?Math.max(1,Math.round(m))+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'};
+const LT={L:'Lecture',P:'Practical',S:'Skill',T:'Tutorial'};
+const tile=(k,v,sub='')=>`<div class="tile"><span class="mut">${k}</span><b>${v}</b>${sub?`<span class="mut" style="font-size:12px">${sub}</span>`:''}</div>`;
+let U=[],FB=[],STORE='',open=new Set();
+const FBK={bug:'🐞 Bug',idea:'💡 Idea',calendar:'📅 Calendar',other:'Other'};
+function fbView(){const L=FB.filter(f=>!fbk.value||f.kind===fbk.value).sort((a,b)=>a.at<b.at?1:-1),r=FB.filter(f=>f.rating);
+ $('fbn').textContent=`· ${FB.length} total${r.length?` · avg rating ${(r.reduce((s,f)=>s+f.rating,0)/r.length).toFixed(1)}★`:''}`;
+ $('fbt').innerHTML='<tr><th>When</th><th>Type</th><th>Rating</th><th>Message</th><th>Student</th><th>Contact</th><th>Page</th></tr>'+(L.length?L.map(f=>`<tr><td title="${new Date(f.at).toLocaleString('en-IN')}">${ago(f.at)}</td><td>${FBK[f.kind]||esc(f.kind)}</td><td>${f.rating?'★'.repeat(f.rating):'—'}</td><td style="white-space:pre-wrap;min-width:260px">${esc(f.message)}</td><td>${esc(f.student)||'—'}</td><td>${esc(f.contact)||'—'}</td><td>${esc(f.page)}</td></tr>`).join(''):'<tr><td colspan="7" class="mut">No feedback yet.</td></tr>')}
+fbk.oninput=fbView;
+TERMS.forEach(t=>tf.insertAdjacentHTML('beforeend',`<option value="${t.id}">${t.name}</option>`));tf.insertAdjacentHTML('beforeend','<option value="-">Not in calendar</option>');
+
+// per-student figures at the chosen target
+function calc(u,t){const c=u.courses.map(x=>({...x,...plan(x.ta,x.tc,x.rem,t)}));
+ const tc=c.reduce((s,x)=>s+x.tc,0),ta=c.reduce((s,x)=>s+x.ta,0),rem=c.reduce((s,x)=>s+x.rem,0);
+ return {...u,c,tc,ta,rem,pct:pc(ta,tc),best:plan(ta,tc,rem,t).best,below:c.filter(x=>pc(x.ta,x.tc)<t*100).length,out:c.filter(x=>x.skip<0).length,tight:c.filter(x=>x.skip===0).length}}
+
+function view(){const t=+tgt.value/100,q=q_.value.trim().toUpperCase();
+ let L=U.map(u=>calc(u,t)).filter(u=>(!tf.value||(tf.value==='-'?!u.term:u.term===tf.value))&&(!q||u.id.includes(q)||u.c.some(x=>x.code.toUpperCase().includes(q))));
+ const by={pct:(a,b)=>a.pct-b.pct,risk:(a,b)=>b.out-a.out||a.pct-b.pct,at:(a,b)=>a.at<b.at?1:-1,id:(a,b)=>a.id<b.id?-1:1}[sort.value];L.sort(by);
+ const n=L.length,avg=n?L.reduce((s,u)=>s+u.pct,0)/n:0,cur=TERMS.find(x=>td>=x.start&&td<=x.end),cs=cur&&termStats(cur,td),nx=cs?.upcoming[0];
+ $('tiles').innerHTML=tile('Students',n,U.length!==n?`of ${U.length} stored`:'')+tile('Average attendance',n?f1(avg):'—')+tile(`Overall below ${tgt.value}%`,L.filter(u=>u.pct<t*100).length,'students')
+  +tile('With a course out of reach',L.filter(u=>u.out).length,'students')+(cur?tile('Class days left',cs.left,cur.name):'')+(nx?tile('Next up',nx.inDays<=0?'Now':nx.inDays+' days',nx.label):'');
+ // term table
+ $('terms').innerHTML='<tr><th>Term</th><th>Classwork</th><th class="n">Class days</th><th class="n">Done</th><th class="n">Left</th><th class="n">Holidays</th><th class="n">Exam days</th><th class="n">Students</th><th class="n">Avg attendance</th><th>Next event</th></tr>'+TERMS.map(x=>{
+  const s=termStats(x,td),us=U.filter(u=>u.term===x.id).map(u=>calc(u,t)),e=s.upcoming[0];
+  return `<tr><td><b>${x.name}</b></td><td>${fmt(x.classStart)} – ${fmt(x.lastClass)}</td><td class="n">${s.classDays}</td><td class="n">${s.done}</td><td class="n">${s.left}</td><td class="n">${s.holidays}</td><td class="n">${s.examDays}</td><td class="n">${us.length}</td><td class="n">${us.length?f1(us.reduce((a,u)=>a+u.pct,0)/us.length):'—'}</td><td>${e?`<span class="kpill" style="--k:${KINDS[e.kind].color}">${e.label}</span> <span class="mut">${e.inDays<=0?'now':'in '+e.inDays+' d'}</span>`:'<span class="mut">term over</span>'}</td></tr>`}).join('');
+ // students
+ const st=u=>u.out?'<span class="pill bad">at risk</span>':u.pct<t*100?'<span class="pill mixp">below target</span>':'<span class="pill ok">on track</span>';
+ const cst=x=>x.skip<0?`<span class="pill bad">max ${f1(x.best)}</span>`:x.skip===0?'<span class="pill bad">attend all</span>':`<span class="pill ok">can miss ${Math.min(x.skip,x.rem)}</span>`;
+ $('stu').innerHTML=`<tr><th>ID</th><th>Term</th><th>Fetched</th><th>Register to</th><th class="n">Held</th><th class="n">Attended</th><th class="n">Overall</th><th class="n">Best possible</th><th class="n">Left (est.)</th><th class="n">Below ${tgt.value}%</th><th class="n">Out of reach</th><th>Status</th></tr>`+
+  (n?'':`<tr><td colspan="12" class="mut">${U.length?'No students match.':'No student has fetched a report yet.'}</td></tr>`)+
+  L.map(u=>`<tr class="stu" data-id="${esc(u.id)}"><td><b>${esc(u.id)}</b></td><td>${esc(u.year)} ${esc(u.sem)}</td><td title="${new Date(u.at).toLocaleString('en-IN')}">${ago(u.at)}</td><td>${fmt(u.asOf)}</td><td class="n">${u.tc}</td><td class="n">${u.ta}</td><td class="n">${f1(u.pct)}</td><td class="n">${u.term?f1(u.best):'—'}</td><td class="n">${u.term?'~'+u.rem:'—'}</td><td class="n">${u.below}</td><td class="n">${u.term?u.out:'—'}</td><td>${st(u)}</td></tr>`+
+  (open.has(u.id)?`<tr class="more"><td colspan="12"><table><tr><th>Code</th><th>Course</th><th>Type</th><th>Section</th><th class="n">Held</th><th class="n">Attended</th><th class="n">Now</th><th class="n">Left</th><th class="n">Best</th><th>At ${tgt.value}%</th></tr>${u.c.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(tcase(x.name))}</td><td>${LT[x.ltps]||esc(x.ltps)}</td><td>${esc(x.sec)}</td><td class="n">${x.tc}</td><td class="n">${x.ta}</td><td class="n">${f1(pc(x.ta,x.tc))}</td><td class="n">~${x.rem}</td><td class="n">${f1(x.best)}</td><td>${u.term?cst(x):'—'}</td></tr>`).join('')}</table></td></tr>`:'')).join('');
+ $('stu').querySelectorAll('tr.stu').forEach(r=>r.onclick=()=>{const id=r.dataset.id;open.has(id)?open.delete(id):open.add(id);view()});
+ return L}
+
+async function load(){const pw=sessionStorage.getItem('kladm')||'';
+ const r=await fetch(API+'/api/admin',{headers:{Authorization:'Bearer '+pw},cache:'no-store'}),j=await r.json().catch(()=>({error:'Bad response'}));
+ if(!r.ok){sessionStorage.removeItem('kladm');$('app').style.display='none';$('login').style.display='';$('lerr').textContent=pw?j.error:'';return}
+ U=j.users;FB=j.feedback||[];STORE=j.store;$('login').style.display='none';$('app').style.display='';
+ $('sub').textContent=`${U.length} stored summar${U.length===1?'y':'ies'} · storage: ${{mongodb:'MongoDB',file:'local file (.data/users.json)',none:'none'}[STORE]}`;
+ $('warn').innerHTML=STORE==='none'?'<div class="warn">No storage is configured on this deployment, so nothing is being saved. In Vercel, add MONGODB_URI under Settings → Environment Variables and redeploy.</div>':'';
+ view();fbView()}
+
+$('lf').onsubmit=e=>{e.preventDefault();sessionStorage.setItem('kladm',$('pw').value);$('pw').value='';load()};
+$('out').onclick=()=>{sessionStorage.removeItem('kladm');U=[];$('app').style.display='none';$('login').style.display=''};
+$('reload').onclick=load;
+$('csv').onclick=()=>{const t=+tgt.value/100,L=view(),cell=v=>`"${String(v).replace(/"/g,'""')}"`;
+ const rows=[['id','year','sem','fetched','register_to','code','course','type','section','held','attended','pct','left_est','best_pct',`can_miss_at_${tgt.value}`]];
+ L.forEach(u=>u.c.forEach(x=>rows.push([u.id,u.year,u.sem,u.at,u.asOf||'',x.code,tcase(x.name),x.ltps,x.sec,x.tc,x.ta,pc(x.ta,x.tc).toFixed(1),x.rem,x.best.toFixed(1),x.skip])));
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.map(r=>r.map(cell).join(',')).join('\n')],{type:'text/csv'}));a.download=`kl-attendance-${td}.csv`;a.click()};
+const q_=$('q');[q_,tf,tgt,sort].forEach(el=>el.oninput=view);
+load();
+</script></body></html>

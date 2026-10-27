@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Academic Calendar</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<style>
+.day.cls{background:color-mix(in srgb,var(--p) 12%,transparent);border-color:color-mix(in srgb,var(--p) 35%,transparent)}
+.day.kd{background:var(--k);border-color:var(--k);color:#fff;font-weight:600;cursor:pointer}
+.day.sun{color:var(--mut)}
+.prog{height:6px;background:var(--line);border-radius:3px;margin-top:8px;overflow:hidden}.prog i{display:block;height:100%;background:var(--acc)}
+tr.past td{color:var(--mut)}
+</style></head><body><div class="wrap">
+<nav class="top"><a href="./">Attendance</a><a href="calendar" class="cur">Academic calendar</a></nav>
+<header><div><h1>Academic Calendar 2026-27</h1><div class="mut">B.Tech III &amp; IV year · College of Engineering · <a id="src" target="_blank" rel="noopener" style="color:var(--acc)">official PDF</a></div></div>
+<div class="controls" id="tabs" style="margin:0"></div></header>
+<div class="tiles" id="tiles"></div>
+
+<div class="card" id="mine"><div class="controls" style="justify-content:space-between"><h2 style="margin:0">Your semester outlook</h2>
+<label class="mut">Target % <select id="tgt"><option>75</option><option>80</option><option selected>85</option></select></label></div><div id="mineBody"></div></div>
+
+<div class="card"><h2 id="calh">Calendar</h2><div class="months" id="months"></div><div class="legend" id="legend" style="flex-wrap:wrap"></div>
+<div id="detail" class="mut">Click a coloured day for details.</div></div>
+
+<div class="card"><h2>Events &amp; exams</h2><div class="scroll"><table id="evs"></table></div></div>
+<div class="card"><h2>Month by month</h2><div class="scroll"><table id="mtab"></table></div>
+<p class="mut" style="font-size:12px;margin:10px 0 0">Class days = Monday–Saturday between commencement of classwork and the last instruction day, minus holidays, exam weeks and immersion weeks. Public holidays the PDF doesn't mark are not included.</p></div>
+</div>
+<script type="module">
+import {SOURCE,TERMS,KINDS,termFor,termOn,termById,termStats,project,plan,lastLogged,addDays,eventsOn,kindOn,isClassDay,dow,todayKey} from "./js/academic-calendar.js";
+const $=id=>document.getElementById(id), td=todayKey();
+const f1=x=>x.toFixed(1)+'%', pc=(a,c)=>c?a/c*100:0;
+const fmt=k=>new Date(k).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+const tcase=s=>s.toLowerCase().replace(/\b\w/g,m=>m.toUpperCase()).replace(/\b(And|For|Of|To|In)\b/g,x=>x.toLowerCase());
+const LT={L:'Lecture',P:'Practical',S:'Skill',T:'Tutorial'};
+const tile=(k,v,sub='')=>`<div class="tile"><span class="mut">${k}</span><b>${v}</b>${sub}</div>`;
+const kp=k=>`<span class="kpill" style="--k:${KINDS[k].color}">${KINDS[k].label}</span>`;
+$('src').href=SOURCE;
+
+const saved=(()=>{try{return JSON.parse(localStorage.getItem('klatt'))}catch(e){return null}})();
+const mineTerm=saved?.meta?termFor(saved.meta.year,saved.meta.sem):null;
+let T=mineTerm||termOn(td);
+try{T=termById(sessionStorage.getItem('kltab'))||T}catch(e){}
+
+function tabs(){$('tabs').innerHTML=TERMS.map(t=>`<button data-t="${t.id}" class="${t===T?'on':''}">${t.sem}</button>`).join('');
+ $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{T=termById(b.dataset.t);try{sessionStorage.setItem('kltab',T.id)}catch(e){}render()})}
+
+function tiles(){const s=termStats(T,td),n=s.upcoming[0];
+ $('tiles').innerHTML=[
+  tile('Class days',s.classDays,`<span class="mut" style="font-size:12px">${fmt(T.classStart)} → ${fmt(T.lastClass)}</span>`),
+  tile('Done / left',`${s.done} / ${s.left}`,`<div class="prog"><i style="width:${s.progress*100}%"></i></div>`),
+  tile('Holidays',s.holidays,'<span class="mut" style="font-size:12px">weekdays off, besides Sundays</span>'),
+  tile('Exam days',s.examDays,'<span class="mut" style="font-size:12px">SEM-IN, lab &amp; sem-end</span>'),
+  tile('Sundays',s.sundays,'<span class="mut" style="font-size:12px">in the whole term</span>'),
+  n?tile(n.inDays<=0?'Happening now':'Next up',n.inDays<=0?'Now':n.inDays===1?'Tomorrow':n.inDays+' days',`<span class="mut" style="font-size:12px">${n.label}</span>`):tile('Term','Over',''),
+ ].join('')}
+
+function mine(){const b=$('mineBody');
+ if(!saved?.d){b.innerHTML='<p class="mut" style="margin:0">Log in on the <a href="./" style="color:var(--acc)">Attendance page</a> and your course-by-course projection for this term will show up here.</p>';return}
+ if(mineTerm!==T){b.innerHTML=`<p class="mut" style="margin:0">Your saved report is for ${saved.meta.year} ${saved.meta.sem}${mineTerm?` — <a href="#" id="go" style="color:var(--acc)">show that term</a>`:', which this calendar does not cover'}.</p>`;
+  $('go')&&($('go').onclick=e=>{e.preventDefault();T=mineTerm;render()});return}
+ const D=saved.d,t=+tgt.value/100,asOf=lastLogged(D),P=project(T,D,asOf||addDays(T.classStart,-1));
+ const tc=D.reduce((s,c)=>s+c.tc,0),ta=D.reduce((s,c)=>s+c.ta,0),R=P.rem.reduce((a,b)=>a+b,0),all=plan(ta,tc,R,t);
+ const rows=D.map((c,i)=>({c,r:P.rem[i],...plan(c.ta,c.tc,P.rem[i],t)}));
+ const out=rows.filter(x=>x.skip<0).length,tight=rows.filter(x=>x.skip===0).length;
+ const st=x=>x.skip<0?`<span class="pill bad">can't reach — max ${f1(x.best)}</span>`:x.skip===0?'<span class="pill bad">attend all</span>':x.skip>=x.r?'<span class="pill ok">can miss all</span>':`<span class="pill ok">can miss ${x.skip}</span>`;
+ b.innerHTML=`<div class="tiles">${tile('Overall now',f1(pc(ta,tc)))}${tile('Best possible',f1(all.best),'<span class="mut" style="font-size:12px">if you attend every class left</span>')}${tile('Classes left (est.)','~'+R,`<span class="mut" style="font-size:12px">over ${P.left} class days</span>`)}${tile('Out of reach',out,`<span class="mut" style="font-size:12px">courses below ${tgt.value}% even attending all</span>`)}${tile('No slack',tight,'<span class="mut" style="font-size:12px">courses where you must attend all</span>')}</div>
+ <div class="scroll"><table><tr><th>Code</th><th>Course</th><th>Type</th><th class="n">Held</th><th class="n">Attended</th><th class="n">Now</th><th class="n">Left (est.)</th><th class="n">Best possible</th><th>At ${tgt.value}%</th></tr>
+ ${rows.map(x=>`<tr><td>${x.c.code}</td><td>${tcase(x.c.name)}</td><td>${LT[x.c.ltps]||x.c.ltps}</td><td class="n">${x.c.tc}</td><td class="n">${x.c.ta}</td><td class="n">${f1(pc(x.c.ta,x.c.tc))}</td><td class="n">~${x.r}</td><td class="n">${f1(x.best)}</td><td>${st(x)}</td></tr>`).join('')}
+ <tr style="font-weight:700"><td></td><td>TOTAL</td><td></td><td class="n">${tc}</td><td class="n">${ta}</td><td class="n">${f1(pc(ta,tc))}</td><td class="n">~${R}</td><td class="n">${f1(all.best)}</td><td>${st({...all,r:R})}</td></tr></table></div>
+ <p class="mut" style="font-size:12px;margin:10px 0 0">Register covers classes up to ${asOf?fmt(asOf):'—'} (fetched ${saved.meta.at}). "Left" is estimated from how often each course met on each weekday so far, applied to the class days still ahead.</p>`}
+
+function cal(){let out='';const [y0,m0]=T.start.split('-').map(Number),[y1,m1]=T.end.split('-').map(Number);
+ for(let y=y0,mo=m0;y<y1||(y===y1&&mo<=m1);mo===12?(y++,mo=1):mo++){const first=new Date(y,mo-1,1),n=new Date(y,mo,0).getDate();
+  let g='MTWTFSS'.split('').map(x=>`<div class="dow">${x}</div>`).join('');for(let i=0;i<(first.getDay()+6)%7;i++)g+='<div></div>';
+  for(let d=1;d<=n;d++){const k=`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`,kd=kindOn(k);
+   const cls=['day',kd?'kd':isClassDay(T,k)?'cls':'',dow(k)===0&&'sun',k===td&&'today'].filter(Boolean).join(' ');
+   g+=`<div class="${cls}" data-d="${k}" ${kd?`style="--k:${KINDS[kd].color}"`:''} title="${eventsOn(k).map(e=>e.label).join(' · ')}">${d}</div>`}
+  out+=`<div class="mon"><h3>${first.toLocaleString('en',{month:'long'})} ${y}</h3><div class="grid">${g}</div></div>`}
+ $('months').innerHTML=out;$('calh').textContent=T.name;
+ $('months').querySelectorAll('.kd,.cls').forEach(el=>el.onclick=()=>{$('months').querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');const k=el.dataset.d,ev=eventsOn(k);
+  $('detail').className='';$('detail').innerHTML=`<b>${new Date(k).toDateString()}</b> — ${isClassDay(T,k)?'regular class day':'no regular classes'}${ev.length?'<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'+ev.map(e=>`<span class="kpill" style="--k:${KINDS[e.kind].color}">${e.label}</span>`).join('')+'</div>':''}`});
+ const used=new Set(T.events.map(e=>e.kind));
+ $('legend').innerHTML='<span style="--c:color-mix(in srgb,var(--p) 35%,transparent)">Class day</span>'+Object.entries(KINDS).filter(([k])=>used.has(k)).map(([,v])=>`<span style="--c:${v.color}">${v.label}</span>`).join('');
+ $('detail').className='mut';$('detail').textContent='Click a coloured day for details.'}
+
+function evs(){$('evs').innerHTML='<tr><th>Dates</th><th>Event</th><th>Type</th><th class="n">Days</th><th>Status</th></tr>'+[...T.events].sort((a,b)=>a.start<b.start?-1:1).map(e=>{
+  const n=Math.round((new Date(e.end)-new Date(e.start))/864e5)+1,past=e.end<td,now=e.start<=td&&td<=e.end,inD=Math.round((new Date(e.start)-new Date(td))/864e5);
+  return `<tr class="${past?'past':''}"><td>${fmt(e.start)}${e.end!==e.start?' – '+fmt(e.end):''}</td><td>${e.label}</td><td>${kp(e.kind)}</td><td class="n">${n}</td><td>${past?'done':now?'<b>ongoing</b>':inD===1?'tomorrow':'in '+inD+' days'}</td></tr>`}).join('')}
+
+function mtab(){let h='<tr><th>Month</th><th class="n">Class days</th><th class="n">Done</th><th class="n">Holidays</th><th class="n">Exam days</th><th class="n">Sundays</th></tr>',tot={classDays:0,done:0,holidays:0,examDays:0,sundays:0};
+ const [y0,m0]=T.start.split('-').map(Number),[y1,m1]=T.end.split('-').map(Number);
+ for(let y=y0,mo=m0;y<y1||(y===y1&&mo<=m1);mo===12?(y++,mo=1):mo++){const mm=String(mo).padStart(2,'0'),a=`${y}-${mm}-01`,b=`${y}-${mm}-${new Date(y,mo,0).getDate()}`;
+  const s=termStats(T,td,a<T.start?T.start:a,b>T.end?T.end:b);for(const k in tot)tot[k]+=s[k];
+  h+=`<tr><td>${new Date(y,mo-1,1).toLocaleString('en',{month:'long'})} ${y}</td><td class="n">${s.classDays}</td><td class="n">${s.done}</td><td class="n">${s.holidays}</td><td class="n">${s.examDays}</td><td class="n">${s.sundays}</td></tr>`}
+ $('mtab').innerHTML=h+`<tr style="font-weight:700"><td>Total</td>${['classDays','done','holidays','examDays','sundays'].map(k=>`<td class="n">${tot[k]}</td>`).join('')}</tr>`}
+
+function render(){tabs();tiles();mine();cal();evs();mtab()}
+tgt.onchange=mine;render();
+</script>
+<script type="module" src="js/feedback.js"></script>
+</body></html>
